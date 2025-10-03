@@ -10,6 +10,7 @@ const { setSock } = require('./server');
 const fs = require('fs');
 
 const AUTH_DIR = './auth';
+const PHONE_NUMBER = "2349164624021"; // 🔑 your WhatsApp number here (no "+")
 
 async function start() {
   try {
@@ -25,10 +26,20 @@ async function start() {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, fs)
       },
-      printQRInTerminal: false // fallback QR in terminal
+      printQRInTerminal: false // ✅ no QR shown in terminal
     });
 
-    sock.ev.on('connection.update', async (update) => {
+    // 🔑 If first time (no creds registered), request pairing code immediately
+    if (!state.creds.registered) {
+      try {
+        const code = await sock.requestPairingCode(PHONE_NUMBER);
+        console.log(`📲 Pair this code in WhatsApp: ${code}`);
+      } catch (err) {
+        console.error("⚠️ Pairing code error:", err);
+      }
+    }
+
+    sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect } = update;
       console.log("connection.update", update);
 
@@ -44,16 +55,6 @@ async function start() {
         }
       } else if (connection === 'open') {
         console.log('✅ WhatsApp connected successfully!');
-      } else if (update.qr) {
-        // Alternative: pairing code (runs only once if not registered)
-        if (!state.creds.registered) {
-          try {
-            const code = await sock.requestPairingCode("2349164624021"); // change number
-            console.log(`📲 Pairing code: ${code}`);
-          } catch (err) {
-            console.error("⚠️ Pairing code error:", err);
-          }
-        }
       }
     });
 
