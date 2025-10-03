@@ -25,21 +25,14 @@ async function start() {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, fs)
       },
-      printQRInTerminal: false // ✅ no QR spam
+      printQRInTerminal: false
     });
 
-    // 🔑 Request pairing code only if not yet registered
-    if (!state.creds.registered) {
-      try {
-        const code = await sock.requestPairingCode("2349164624021"); // change to your WA number
-        console.log(`📲 Pair this code in WhatsApp: ${code}`);
-      } catch (err) {
-        console.error("⚠️ Pairing code error:", err);
-      }
-    }
+    // ✅ Save credentials whenever updated
+    sock.ev.on('creds.update', saveCreds);
 
-    // ✅ Handle connection updates
-    sock.ev.on('connection.update', (update) => {
+    // ✅ Connection updates
+    sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect } = update;
 
       if (connection === 'close') {
@@ -49,7 +42,7 @@ async function start() {
           fs.rmSync(AUTH_DIR, { recursive: true, force: true });
           setTimeout(() => start(), 3000);
         } else {
-          console.log('Reconnecting in 5s...');
+          console.log('⚠️ Disconnected, reconnecting in 5s...');
           setTimeout(() => start(), 5000);
         }
       } else if (connection === 'open') {
@@ -57,10 +50,18 @@ async function start() {
       }
     });
 
-    // ✅ Save credentials when updated
-    sock.ev.on('creds.update', saveCreds);
+    // ✅ Request pairing code only if first time
+    if (!state.creds.registered && !sock.pairingCodeRequested) {
+      sock.pairingCodeRequested = true;
+      try {
+        const code = await sock.requestPairingCode("2349164624021"); // your number
+        console.log(`📲 Pair this code in WhatsApp: ${code}`);
+      } catch (err) {
+        console.error("⚠️ Pairing code error:", err);
+      }
+    }
 
-    // expose socket to rest of app
+    // Expose socket to the rest of the app
     setSock(sock);
 
   } catch (err) {
