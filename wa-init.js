@@ -1,46 +1,56 @@
-// wa-init.js — Baileys init & inject sock to server
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const { setSock } = require('./server');
+// wa-init.js — Baileys init with pairing code only (no QR)
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion
+} = require('@whiskeysockets/baileys')
+const { setSock } = require('./server')
 
 async function start() {
   try {
-    // Baileys will store session data in "session" folder
-    const { state, saveCreds } = await useMultiFileAuthState('./session');
+    const { state, saveCreds } = await useMultiFileAuthState('./auth')
+    const { version } = await fetchLatestBaileysVersion()
 
     const sock = makeWASocket({
+      version,
       auth: state,
-      printQRInTerminal: false // ❌ disable QR
-    });
+      printQRInTerminal: false, // disable QR
+      browser: ["Ubuntu", "Chrome", "22.04"]
+    })
 
-    sock.ev.on('connection.update', async (update) => {
-      console.log('connection.update', JSON.stringify(update));
-      const { connection, lastDisconnect } = update;
+    // Pairing code if session is new
+    if (!state.creds.registered) {
+      const phoneNumber = process.env.WA_NUMBER || "2349164624021" // set your phone number
+      const code = await sock.requestPairingCode(phoneNumber)
+      console.log("📲 Your WhatsApp pairing code:", code)
+    }
+
+    sock.ev.on('connection.update', (update) => {
+      const { connection, lastDisconnect } = update
+      console.log('connection.update', update)
 
       if (connection === 'close') {
-        const code = lastDisconnect?.error?.output?.statusCode;
-        if (code !== DisconnectReason.loggedOut) {
-          console.log('Reconnecting...');
-          start().catch(console.error);
+        const reason = lastDisconnect?.error?.output?.statusCode
+        if (reason !== DisconnectReason.loggedOut) {
+          console.log('⚠️ Connection closed, reconnecting...')
+          start()
         } else {
-          console.log('Logged out — delete session folder and re-auth.');
+          console.log('❌ Logged out. New pairing code will be generated on next run.')
         }
       } else if (connection === 'open') {
-        console.log('✅ WhatsApp socket connected.');
+        console.log('✅ WhatsApp connected!')
       }
-    });
+    })
 
-    sock.ev.on('creds.update', saveCreds);
-    setSock(sock);
+    sock.ev.on('creds.update', saveCreds)
+    setSock(sock)
 
-    // 🚀 Always generate pairing code on first auth
-    if (!sock.authState.creds.registered) {
-      const code = await sock.requestPairingCode('2349164624021'); // replace with your WhatsApp number
-      console.log('📲 Your WhatsApp pairing code:', code);
-    }
+    console.log('🚀 Baileys ready. Use the pairing code above to link.')
   } catch (err) {
-    console.error('wa-init error', err);
-    setTimeout(() => start().catch(console.error), 5000);
+    console.error('wa-init error', err)
+    setTimeout(() => start(), 5000)
   }
 }
 
-start();
+start()
