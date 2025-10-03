@@ -10,7 +10,6 @@ const { setSock } = require('./server');
 const fs = require('fs');
 
 const AUTH_DIR = './auth';
-const PHONE_NUMBER = "2349164624021"; // 🔑 your WhatsApp number here (no "+")
 
 async function start() {
   try {
@@ -26,39 +25,44 @@ async function start() {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, fs)
       },
-      printQRInTerminal: false // ✅ no QR shown in terminal
+      printQRInTerminal: false // we use pairing code instead
     });
 
-    // 🔑 If first time (no creds registered), request pairing code immediately
-    if (!state.creds.registered) {
-      try {
-        const code = await sock.requestPairingCode(PHONE_NUMBER);
-        console.log(`📲 Pair this code in WhatsApp: ${code}`);
-      } catch (err) {
-        console.error("⚠️ Pairing code error:", err);
-      }
-    }
-
-    sock.ev.on('connection.update', (update) => {
-      const { connection, lastDisconnect } = update;
+    // ✅ Handle connection updates
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
       console.log("connection.update", update);
 
       if (connection === 'close') {
         const reason = lastDisconnect?.error?.output?.statusCode;
-        if (reason !== DisconnectReason.loggedOut) {
-          console.log('Reconnecting in 5s...');
-          setTimeout(() => start(), 5000);
-        } else {
+        if (reason === DisconnectReason.loggedOut) {
           console.log('❌ Logged out. Clearing auth and restarting...');
           fs.rmSync(AUTH_DIR, { recursive: true, force: true });
           setTimeout(() => start(), 3000);
+        } else {
+          console.log('Reconnecting in 5s...');
+          setTimeout(() => start(), 5000);
         }
       } else if (connection === 'open') {
         console.log('✅ WhatsApp connected successfully!');
+      } else if (qr && !state.creds.registered) {
+        // 🔑 Only request pairing code ONCE
+        if (!sock.pairingCodeRequested) {
+          sock.pairingCodeRequested = true;
+          try {
+            const code = await sock.requestPairingCode("2349164624021"); // change to your WA number
+            console.log(`📲 Pair this code in WhatsApp: ${code}`);
+          } catch (err) {
+            console.error("⚠️ Pairing code error:", err);
+          }
+        }
       }
     });
 
+    // ✅ Save credentials when updated
     sock.ev.on('creds.update', saveCreds);
+
+    // expose socket to rest of app
     setSock(sock);
 
   } catch (err) {
