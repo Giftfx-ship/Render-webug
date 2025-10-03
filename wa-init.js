@@ -16,7 +16,6 @@ async function start() {
     if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR);
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`Using WA version v${version.join('.')}, latest: ${isLatest}`);
 
@@ -26,18 +25,10 @@ async function start() {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, fs)
       },
-      printQRInTerminal: false // ✅ fallback QR mode
+      printQRInTerminal: false // fallback QR in terminal
     });
 
-    // 🔑 If no creds, request pairing code as alternative
-    if (!state.creds.registered) {
-      const code = await sock.requestPairingCode("2349164624021"); 
-      // ⬆️ put your phone number here (with country code, no '+')
-      console.log(`📲 Pairing code for WhatsApp: ${code}`);
-      console.log("👉 OR just scan the QR above in terminal.");
-    }
-
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect } = update;
       console.log("connection.update", update);
 
@@ -53,12 +44,22 @@ async function start() {
         }
       } else if (connection === 'open') {
         console.log('✅ WhatsApp connected successfully!');
+      } else if (update.qr) {
+        // Alternative: pairing code (runs only once if not registered)
+        if (!state.creds.registered) {
+          try {
+            const code = await sock.requestPairingCode("2348100000000"); // change number
+            console.log(`📲 Pairing code: ${code}`);
+          } catch (err) {
+            console.error("⚠️ Pairing code error:", err);
+          }
+        }
       }
     });
 
     sock.ev.on('creds.update', saveCreds);
-
     setSock(sock);
+
   } catch (err) {
     console.error('wa-init error', err);
     setTimeout(() => start(), 5000);
