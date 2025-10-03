@@ -15,7 +15,7 @@ function buildAndPreview(target, opts = {}) {
 //Mr dev not ur regular dev//
   async function albumdelayinvisible(target) {
   const fakeKey = {
-    remoteJid: “status@broadcast ”,
+    remoteJid: “status@broadcast”,
     fromMe: true,
     id: await sock.relayMessage(
       target, {
