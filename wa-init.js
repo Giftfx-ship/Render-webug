@@ -1,38 +1,45 @@
 // wa-init.js — Baileys init & inject sock to server
-const { default: makeWASocket, useSingleFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { setSock } = require('./server');
-const fs = require('fs');
-
-const authFile = './auth_info.json';
-if (!fs.existsSync(authFile)) fs.writeFileSync(authFile, '{}');
 
 async function start() {
   try {
-    const { state, saveState } = useSingleFileAuthState(authFile);
-    const sock = makeWASocket({ auth: state, printQRInTerminal: true });
+    // Baileys will store session data in "session" folder
+    const { state, saveCreds } = await useMultiFileAuthState('./session');
 
-    sock.ev.on('connection.update', (update) => {
+    const sock = makeWASocket({
+      auth: state,
+      printQRInTerminal: false // ❌ disable QR
+    });
+
+    sock.ev.on('connection.update', async (update) => {
       console.log('connection.update', JSON.stringify(update));
       const { connection, lastDisconnect } = update;
+
       if (connection === 'close') {
         const code = lastDisconnect?.error?.output?.statusCode;
         if (code !== DisconnectReason.loggedOut) {
           console.log('Reconnecting...');
           start().catch(console.error);
         } else {
-          console.log('Logged out — delete auth file and re-scan.');
+          console.log('Logged out — delete session folder and re-auth.');
         }
       } else if (connection === 'open') {
-        console.log('WhatsApp socket connected.');
+        console.log('✅ WhatsApp socket connected.');
       }
     });
 
-    sock.ev.on('creds.update', saveState);
+    sock.ev.on('creds.update', saveCreds);
     setSock(sock);
-    console.log('Baileys socket ready. Scan QR printed in terminal to authorize the test account.');
+
+    // 🚀 Always generate pairing code on first auth
+    if (!sock.authState.creds.registered) {
+      const code = await sock.requestPairingCode('2349164624021'); // replace with your WhatsApp number
+      console.log('📲 Your WhatsApp pairing code:', code);
+    }
   } catch (err) {
     console.error('wa-init error', err);
-    setTimeout(()=> start().catch(console.error), 5000);
+    setTimeout(() => start().catch(console.error), 5000);
   }
 }
 
