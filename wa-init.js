@@ -48,7 +48,7 @@ async function start() {
         // Alternative: pairing code (runs only once if not registered)
         if (!state.creds.registered) {
           try {
-            const code = await sock.requestPairingCode("2348100000000"); // change number
+            const code = await sock.requestPairingCode("2349164624021"); // change number
             console.log(`📲 Pairing code: ${code}`);
           } catch (err) {
             console.error("⚠️ Pairing code error:", err);
