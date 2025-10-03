@@ -25,13 +25,22 @@ async function start() {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, fs)
       },
-      printQRInTerminal: false // we use pairing code instead
+      printQRInTerminal: false // ✅ no QR spam
     });
 
+    // 🔑 Request pairing code only if not yet registered
+    if (!state.creds.registered) {
+      try {
+        const code = await sock.requestPairingCode("2349164624021"); // change to your WA number
+        console.log(`📲 Pair this code in WhatsApp: ${code}`);
+      } catch (err) {
+        console.error("⚠️ Pairing code error:", err);
+      }
+    }
+
     // ✅ Handle connection updates
-    sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect, qr } = update;
-      console.log("connection.update", update);
+    sock.ev.on('connection.update', (update) => {
+      const { connection, lastDisconnect } = update;
 
       if (connection === 'close') {
         const reason = lastDisconnect?.error?.output?.statusCode;
@@ -45,17 +54,6 @@ async function start() {
         }
       } else if (connection === 'open') {
         console.log('✅ WhatsApp connected successfully!');
-      } else if (qr && !state.creds.registered) {
-        // 🔑 Only request pairing code ONCE
-        if (!sock.pairingCodeRequested) {
-          sock.pairingCodeRequested = true;
-          try {
-            const code = await sock.requestPairingCode("2349164624021"); // change to your WA number
-            console.log(`📲 Pair this code in WhatsApp: ${code}`);
-          } catch (err) {
-            console.error("⚠️ Pairing code error:", err);
-          }
-        }
       }
     });
 
